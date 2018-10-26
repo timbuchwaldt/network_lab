@@ -5,26 +5,52 @@ conf = {
 		dus1r1: {
 			loopback_ip: "10.240.0.1/32",
 			loopback_ip6: "2001:DB8::103:1/127",
-      connections: {dus1r2: {ip: "172.16.0.1/24"}, dus1sw1: {ip: "192.168.27.2/24", latency: "50ms"}, fra1r1: {ip: "172.16.1.2/24"}},
 			features: [:bird],
 		},
 		fra1r1: {
 			loopback_ip: "10.240.0.3/32",
 			loopback_ip6: "2001:DB8::102:1/127",
-			connections: {dus1r1: {ip: "172.16.1.1/24"}},
 			features: [:bird],
 		},
 		dus1r2: {
 			loopback_ip: "10.240.0.2/32",
 			loopback_ip6: "2001:DB8::103:2/128",
-			connections: {dus1r1: {ip: "172.16.0.2/24"}, dus1sw2: {ip: "192.168.27.1/24", latency: "23ms"}},
 			features: [:bird],
 		}
 	},
 	switches: {
-		dus1sw1: {connections: {dus1r1: {}, dus1sw2: {latency: "5ms"}}},
-		dus1sw2: {connections: {dus1r2: {}, dus1sw1: {}}},
-	}
+		dus1sw1: {},
+		dus1sw2: {},
+	},
+	wires: [
+		{
+			a: "dus1r1",
+			b: "dus1r2",
+			a_ip4: "172.16.0.1/24",
+			b_ip4: "172.16.0.2/24",
+		},
+		{
+			a: "dus1r1",
+			b: "dus1sw1",
+			a_ip4: "192.168.27.2/24",
+		},
+		{
+			a: "dus1r2",
+			b: "dus1sw2",
+			a_ip4: "192.168.27.1/24",
+		},
+		{
+			a: "dus1r1",
+			b: "fra1r1",
+			a_ip4: "172.16.1.1/24",
+			b_ip4: "172.16.1.2/24",
+			latency: "20ms"
+		},
+		{
+			a: "dus1sw1",
+			b: "dus1sw2"
+		}
+	]
 }
 
 
@@ -51,39 +77,39 @@ File.open("up.sh", 'a') do |file|
 		# enable forwarding on all interfaces
 	end
 
-	created = []
-	conf[:routers].each do |name, router_config|
-		router_config[:connections].each do |peer, config|
-			link = "#{name}-#{peer}"
-			unless created.include?(link)
-				file.puts "ip link add #{link} type veth peer name #{peer}-#{name}"
-				created << link
-				created << "#{peer}-#{name}"
-			end
-			file.puts "ip link set #{link} netns #{name}"
-			file.puts "ip netns exec #{name} ip link set up dev #{link}"
-			file.puts "ip netns exec #{name} ip addr add #{config[:ip]} dev #{link}"
-			if config[:latency]
-				file.puts "ip netns exec #{name} tc qdisc add dev #{link} root netem delay #{config[:latency]}"
-			end
+	conf[:wires].each do |wire|
+		a = wire[:a]
+		b = wire[:b]
+
+		a_b = a + "_" + b
+		b_a = b + "_" + a
+
+		file.puts "ip link add #{a_b} type veth peer name #{b_a}"
+
+		file.puts "ip link set #{a_b} netns #{a}"
+		file.puts "ip link set #{b_a} netns #{b}"
+
+		file.puts "ip netns exec #{a} ip link set up dev #{a_b}"
+		file.puts "ip netns exec #{b} ip link set up dev #{b_a}"
+
+		if wire[:a_ip4]
+			file.puts "ip netns exec #{a} ip addr add #{wire[:a_ip4]} dev #{a_b}"
+		elsif conf[:switches][wire[:b].to_sym]
+			# a side is a switch, add interface to bridge
+			file.puts "ip netns exec #{a} ip link set #{a_b} master br0"
 		end
-	end
+		if wire[:b_ip4]
+			file.puts "ip netns exec #{b} ip addr add #{wire[:b_ip4]} dev #{b_a}"
+		elsif conf[:switches][wire[:b].to_sym]
+			# b side is a switch, add interface to bridge
+			file.puts "ip netns exec #{b} ip link set #{b_a} master br0"
+		end
 
 
-	conf[:switches].each do |name, switch_config|
-		switch_config[:connections].each do |peer, config|
-			link = "#{name}-#{peer}"
-			unless created.include?(link)
-				file.puts "ip link add #{link} type veth peer name #{peer}-#{name}"
-				created << link
-				created << "#{peer}-#{name}"
-			end
-			file.puts "ip link set #{link} netns #{name}"
-			file.puts "ip netns exec #{name} ip link set up dev #{link}"
-			file.puts "ip netns exec #{name} ip link set #{link} master br0"
-			if config[:latency]
-				file.puts "ip netns exec #{name} tc qdisc add dev #{link} root netem delay #{config[:latency]}"
-			end
+
+		if wire[:latency]
+			file.puts "ip netns exec #{a} tc qdisc add dev #{a_b} root netem delay #{wire[:latency]}"
+			file.puts "ip netns exec #{b} tc qdisc add dev #{b_a} root netem delay #{wire[:latency]}"
 		end
 	end
 
@@ -136,14 +162,11 @@ end
 File.truncate('graph.dot', 0)
 File.open("graph.dot", 'a') do |file|
 	file.puts "strict graph {"
-	conf[:routers].each do |name, router_config|
-		router_config[:connections].each do |peer, config|
-			file.puts "#{name} -- #{peer}"
-		end
-	end
-	conf[:switches].each do |name, switch_config|
-		switch_config[:connections].each do |peer, config|
-			file.puts "#{name} -- #{peer}"
+	conf[:wires].each do |wire|
+		if wire[:latency]
+			file.puts "#{wire[:a]} -- #{wire[:b]}[label=\"#{wire[:latency]}\"]"
+		else
+			file.puts "#{wire[:a]} -- #{wire[:b]}"
 		end
 	end
 	file.puts "}"
