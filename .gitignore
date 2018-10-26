@@ -2,3 +2,5 @@
 down.sh
 up.sh
 tmux.yaml
+graph.dot
+out.png
