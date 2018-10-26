@@ -87,6 +87,23 @@ File.open("up.sh", 'a') do |file|
 		end
 	end
 
+	file.puts """
+	cat <<EOF > /etc/hosts
+127.0.0.1 localhost
+
+# The following lines are desirable for IPv6 capable hosts
+::1 ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+ff02::3 ip6-allhosts
+	"""
+	conf[:routers].each do |name, router_config|
+		file.puts "#{router_config[:loopback_ip].split('/')[0]} #{name}"
+		file.puts "#{router_config[:loopback_ip6].split('/')[0]} #{name}"
+	end
+file.puts "EOF"
 end
 
 File.truncate('tmux.yaml', 0)
