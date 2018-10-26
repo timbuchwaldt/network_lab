@@ -115,3 +115,20 @@ File.open("tmux.yaml", 'a') do |file|
 		end
 	end
 end
+
+File.truncate('graph.dot', 0)
+File.open("graph.dot", 'a') do |file|
+	file.puts "strict graph {"
+	conf[:routers].each do |name, router_config|
+		router_config[:connections].each do |peer, config|
+			file.puts "#{name} -- #{peer}"
+		end
+	end
+	conf[:switches].each do |name, switch_config|
+		switch_config[:connections].each do |peer, config|
+			file.puts "#{name} -- #{peer}"
+		end
+	end
+	file.puts "}"
+
+end
