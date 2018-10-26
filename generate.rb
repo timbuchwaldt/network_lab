@@ -2,11 +2,13 @@ conf = {
 	"routers": {
 		"dus1r1": {
 			"ip": "10.240.0.1/32",
-			"connections": {"dus1r2": "172.16.0.1/24"}
+			"connections": {"dus1r2": "172.16.0.1/24"},
+			"features": ["bird"],
 		},
 		"dus1r2": {
 			"ip": "10.240.0.2/32",
-			"connections": {"dus1r1": "172.16.0.2/24"}
+			"connections": {"dus1r1": "172.16.0.2/24"},
+			"features": ["bird"],
 		}
 	}
 }
@@ -51,9 +53,18 @@ File.open("tmux.yaml", 'a') do |file|
 	conf[:routers].each do |name, config|
 		file.puts "      - ip netns exec #{name} bash --init-file <(echo 'export PS1=#{name}:$PS1 && clear')"
 	end
-	file.puts "  - birds:"
+	file.puts "  - bird-clients:"
 	file.puts "      panes:"
 	conf[:routers].each do |name, config|
-		file.puts "      - bash -c 'ip netns exec #{name} bird -c /vagrant/config/#{name}/bird.conf -d -P /var/run/bird-#{name}.pid -s /var/run/bird-#{name}.ctl"
+		if config[:features].include?("bird")
+			file.puts "      - bash -c 'sleep 1 && ip netns exec #{name} birdc -s /var/run/bird-#{name}.ctl'"
+		end
+	end
+	file.puts "  - bird-daemon:"
+	file.puts "      panes:"
+	conf[:routers].each do |name, config|
+		if config[:features].include?("bird")
+			file.puts "      - bash -c 'ip netns exec #{name} bird -c /vagrant/config/#{name}/bird.conf -d -P /var/run/bird-#{name}.pid -s /var/run/bird-#{name}.ctl'"
+		end
 	end
 end
