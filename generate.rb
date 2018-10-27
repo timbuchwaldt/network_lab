@@ -26,24 +26,24 @@ conf = {
 		{
 			a: "dus1r1",
 			b: "dus1r2",
-			a_ip4: "172.16.0.1/24",
-			b_ip4: "172.16.0.2/24",
+			a_ip: ["172.16.0.1/24", "2001:DB8:fefe::1/64"],
+			b_ip: ["172.16.0.2/24", "2001:DB8:fefe::2/64"],
 		},
 		{
 			a: "dus1r1",
 			b: "dus1sw1",
-			a_ip4: "192.168.27.2/24",
+			a_ip: ["192.168.27.2/24"],
 		},
 		{
 			a: "dus1r2",
 			b: "dus1sw2",
-			a_ip4: "192.168.27.1/24",
+			a_ip: ["192.168.27.1/24"],
 		},
 		{
 			a: "dus1r1",
 			b: "fra1r1",
-			a_ip4: "172.16.1.1/24",
-			b_ip4: "172.16.1.2/24",
+			a_ip: ["172.16.1.1/24"],
+			b_ip: ["172.16.1.2/24"],
 			latency: "20ms"
 		},
 		{
@@ -92,20 +92,23 @@ File.open("up.sh", 'a') do |file|
 		file.puts "ip netns exec #{a} ip link set up dev #{a_b}"
 		file.puts "ip netns exec #{b} ip link set up dev #{b_a}"
 
-		if wire[:a_ip4]
-			file.puts "ip netns exec #{a} ip addr add #{wire[:a_ip4]} dev #{a_b}"
+		if wire[:a_ip]
+			wire[:a_ip].each do |ip|
+				file.puts "ip netns exec #{a} ip addr add #{ip} dev #{a_b}"
+			end
 		elsif conf[:switches][wire[:b].to_sym]
 			# a side is a switch, add interface to bridge
 			file.puts "ip netns exec #{a} ip link set #{a_b} master br0"
 		end
-		if wire[:b_ip4]
-			file.puts "ip netns exec #{b} ip addr add #{wire[:b_ip4]} dev #{b_a}"
+
+		if wire[:b_ip]
+			wire[:b_ip].each do |ip|
+				file.puts "ip netns exec #{b} ip addr add #{ip} dev #{b_a}"
+			end
 		elsif conf[:switches][wire[:b].to_sym]
 			# b side is a switch, add interface to bridge
 			file.puts "ip netns exec #{b} ip link set #{b_a} master br0"
 		end
-
-
 
 		if wire[:latency]
 			file.puts "ip netns exec #{a} tc qdisc add dev #{a_b} root netem delay #{wire[:latency]}"
